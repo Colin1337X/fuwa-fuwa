@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Story Weaver</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        #storyOutput {
+            min-height: 200px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .story-section {
+            display: none;
+        }
+        .container {
+            max-width: 1024px;
+        }
+        /* Custom scrollbar for better aesthetics */
+        textarea::-webkit-scrollbar, #storyOutput::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-thumb, #storyOutput::-webkit-scrollbar-thumb {
+            background-color: #a5b4fc; /* Indigo-300 */
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-track, #storyOutput::-webkit-scrollbar-track {
+            background-color: #eef2ff; /* Indigo-50 */
+        }
+        #loadingIndicator {
+            display: none;
+        }
+        /* Custom Markdown Styles */
+        /* Actions (Italic, standard markdown) */
+        /* Screaming (**Bold**) */
+        .scream {
+            font-size: 1.25rem; /* xl */
+            font-weight: 800; /* extabold */
+            color: #dc2626; /* red-600 */
+            display: inline;
+        }
+        /* Louder Screams (## Heading) */
+        .loud-scream {
+            font-size: 1.875rem; /* 3xl */
+            font-weight: 900;
+            color: #991b1b; /* red-800 */
+            display: block;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        /* Electric/Digital (`backticks`) */
+        .digital {
+            background-color: #1e3a8a; /* blue-900 */
+            color: #67e8f9; /* cyan-300 */
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="container mx-auto">
+        <h1 class="text-4xl font-extrabold text-indigo-800 mb-6 border-b-4 border-indigo-200 pb-2">
+            The Collaborative Narrator
+        </h1>
+        <p class="text-sm text-gray-500 mb-6">Markdown Support: *actions*, **screaming**, ## LOUDER SCREAM, and `electric text`.</p>
+
+        <!-- Story Setup Section -->
+        <div id="setupSection" class="story-section block p-6 bg-white rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">1. Start Your Story</h2>
+
+            <!-- API Configuration -->
+            <label for="apiUrlInput" class="block text-sm font-medium text-gray-700 mb-1">Custom API Endpoint URL (Leave blank to use Gemini API)</label>
+            <input type="text" id="apiUrlInput" value="" placeholder="e.g., http://localhost:5000/api/generate" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+            
+            <label for="genreInput" class="block text-sm font-medium text-gray-700 mb-1">Genre</label>
+            <input type="text" id="genreInput" value="High Fantasy" placeholder="e.g., Sci-Fi, Film Noir, Horror" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+
+            <label for="setupInput" class="block text-sm font-medium text-gray-700 mb-1">Setup / Theme</label>
+            <textarea id="setupInput" rows="4" placeholder="e.g., A lone wizard must retrieve a stolen artifact from a corrupted king, facing monstrous guardians in his path." class="w-full p-3 mb-6 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">You are a grizzled detective in a neon-drenched cyberpunk city, searching for a missing data courier who holds secrets to a mega-corporation.</textarea>
+
+            <button id="startStoryBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md hover:shadow-lg">
+                Start Adventure
+            </button>
+        </div>
+
+        <!-- Story & Interaction Section -->
+        <div id="gameSection" class="story-section p-6 bg-white rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">2. Your Narrative</h2>
+
+            <!-- Story Output -->
+            <div id="storyOutput" class="p-6 border border-gray-200 rounded-lg overflow-y-auto max-h-[60vh]">
+                <!-- Story turns will be inserted here -->
+            </div>
+
+            <!-- User Input -->
+            <div class="mt-6">
+                <label for="actionInput" class="block text-lg font-semibold text-gray-800 mb-2">Your Action</label>
+                
+                <div id="dialogueSuggestions" class="mb-2 p-3 bg-yellow-50 border border-yellow-200 text-sm text-yellow-800 rounded-lg hidden">
+                    <!-- Dialogue suggestions will appear here -->
+                </div>
+
+                <textarea id="actionInput" rows="3" placeholder="Describe your character's next action or choice..." class="w-full p-3 border border-gray-300 rounded-lg shadow-inner focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+                
+                <div class="flex justify-between items-center mt-4">
+                    <button id="npcSuggestBtn" class="flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                        <span>Suggest Dialogue ✨</span>
+                    </button>
+                    <div id="loadingIndicator" class="flex items-center space-x-2 text-indigo-600 font-semibold" style="display: none;">
+                        <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Narrator is writing...</span>
+                    </div>
+                    <button id="sendActionBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md hover:shadow-lg">
+                        Send Action
+                    </button>
+                </div>
+            </div>
+
+            <!-- Key Information Tracker Section -->
+            <div class="mt-8">
+                <label for="infoTracker" class="block text-lg font-semibold text-gray-800 mb-2">Key Information Tracker (AI-Updated & Editable)</label>
+                <div class="flex space-x-4 mb-3">
+                    <button id="generateTrackerBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-md hover:shadow-lg">
+                        Generate Starter Tracker
+                    </button>
+                </div>
+                <!-- This textarea is now huge and resizable -->
+                <textarea id="infoTracker" rows="10" class="w-full p-4 border border-gray-300 rounded-lg shadow-inner focus:ring-indigo-500 focus:border-indigo-500 resize-y font-mono text-sm leading-relaxed" placeholder="Key plot points, character names, locations, and lore will be summarized here and updated every turn."></textarea>
+            </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="mt-8 flex justify-center space-x-4">
+            <button id="resetBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-md">
+                Reset Story
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Global variables for Firebase access provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+        // Base API configuration
+        const GEMINI_API_KEY = "";
+        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
+        
+        // TTS API for narration
+        const TTS_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
+        const TTS_VOICE = "Kore"; 
+        
+        // DELIMITER for parsing plain text response
+        const TRACKER_DELIMITER = "---TRACKER_SPLIT---";
+
+        // Application State
+        let db;
+        let auth;
+        let userId = null;
+        let isLoading = false;
+
+        let genre = '';
+        let storySetup = '';
+        let chatHistory = [];
+        let storyDocRef = null;
+        let currentTrackerContent = "";
+
+        // UI Elements
+        const setupSection = document.getElementById('setupSection');
+        const gameSection = document.getElementById('gameSection');
+        const apiUrlInput = document.getElementById('apiUrlInput');
+        const startStoryBtn = document.getElementById('startStoryBtn');
+        const sendActionBtn = document.getElementById('sendActionBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const storyOutput = document.getElementById('storyOutput');
+        const infoTrackerField = document.getElementById('infoTracker');
+        const generateTrackerBtn = document.getElementById('generateTrackerBtn');
+        const dialogueSuggestionsDiv = document.getElementById('dialogueSuggestions');
+        const npcSuggestBtn = document.getElementById('npcSuggestBtn');
+
+        // Expose narrate function globally for the HTML inline onclick
+        window.narrateLastTurn = narrateLastTurn;
+
+        // --- Utility Functions ---
+
+        function getApiUrl() {
+            const customUrl = apiUrlInput.value.trim();
+            return customUrl || GEMINI_API_URL;
+        }
+
+        function setIsLoading(state) {
+            isLoading = state;
+            sendActionBtn.disabled = state;
+            startStoryBtn.disabled = state;
+            generateTrackerBtn.disabled = state;
+            npcSuggestBtn.disabled = state;
+            loadingIndicator.style.display = state ? 'flex' : 'none';
+        }
+
+        // Converts raw string content to a list of 'parts' for the API call
+        function createContentParts(text, role = 'user') {
+            return [{ role, parts: [{ text }] }];
+        }
+        
+        // Add base64 utility functions for TTS
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Convert signed 16-bit PCM audio data to WAV format
+        function pcmToWav(pcm16, sampleRate) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const blockAlign = numChannels * (bitsPerSample / 8);
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = pcm16.length * 2; 
+
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            let offset = 0;
+
+            function writeString(str) {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(offset + i, str.charCodeAt(i));
+                }
+                offset += str.length;
+            }
+
+            function writeUint32(value) {
+                view.setUint32(offset, value, true);
+                offset += 4;
+            }
+
+            function writeUint16(value) {
+                view.setUint16(offset, value, true);
+                offset += 2;
+            }
+
+            // RIFF header
+            writeString('RIFF');
+            writeUint32(36 + dataSize); 
+            writeString('WAVE');
+
+            // FMT sub-chunk
+            writeString('fmt ');
+            writeUint32(16); 
+            writeUint16(1); 
+            writeUint16(numChannels);
+            writeUint32(sampleRate);
+            writeUint32(byteRate);
+            writeUint16(blockAlign);
+            writeUint16(bitsPerSample);
+
+            // Data sub-chunk
+            writeString('data');
+            writeUint32(dataSize);
+
+            // Write PCM data
+            for (let i = 0; i < pcm16.length; i++) {
+                view.setInt16(offset, pcm16[i], true);
+                offset += 2;
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+
+        // --- Firebase Initialization and State Management ---
+
+        window.onload = function() {
+            setLogLevel('Debug');
+            if (Object.keys(firebaseConfig).length) {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                    } else {
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (e) {
+                            console.error("Authentication failed:", e);
+                        }
+                    }
+                });
+
+                setupSnapshotListener();
+            } else {
+                console.error("Firebase configuration is missing.");
+            }
+        };
+
+        function setupSnapshotListener() {
+            if (!db || !auth) {
+                setTimeout(setupSnapshotListener, 100);
+                return;
+            }
+
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    storyDocRef = doc(db, 'artifacts', appId, 'users', userId, 'story', 'current');
+                    
+                    onSnapshot(storyDocRef, (doc) => {
+                        if (doc.exists()) {
+                            const data = doc.data();
+                            genre = data.genre || '';
+                            storySetup = data.storySetup || '';
+                            // NOTE: chatHistory stores the raw text response now
+                            chatHistory = data.chatHistory || [];
+                            currentTrackerContent = data.trackerContent || '';
+                            
+                            renderStory();
+                            infoTrackerField.value = currentTrackerContent;
+                            
+                            if (chatHistory.length > 0) {
+                                setupSection.style.display = 'none';
+                                gameSection.style.display = 'block';
+                            } else {
+                                setupSection.style.display = 'block';
+                                gameSection.style.display = 'none';
+                            }
+                        }
+                    }, (error) => {
+                        console.error("Error listening to story updates:", error);
+                    });
+                    
+                    unsubscribe(); 
+                }
+            });
+        }
+
+        async function saveStoryState() {
+            if (!storyDocRef || !userId) return;
+
+            const state = {
+                genre: genre,
+                storySetup: storySetup,
+                chatHistory: chatHistory,
+                trackerContent: infoTrackerField.value || '' 
+            };
+
+            try {
+                await setDoc(storyDocRef, state);
+            } catch (error) {
+                console.error("Error saving story state:", error);
+            }
+        }
+
+        // --- Custom Markdown Rendering ---
+        function parseAndStyleMarkdown(text) {
+            // 1. Newline to <br> for basic paragraph separation
+            let html = text.replace(/\n/g, '<br>');
+
+            // 2. Loud Screams (## Heading) -> Custom Class
+            // Needs to be done before other markdown to avoid conflict
+            html = html.replace(/##\s*([^<]+)/g, (match, content) => {
+                // Remove existing <br> created by previous step inside the H2 content
+                const cleanContent = content.trim().replace(/<br>/g, '');
+                return `<div class="loud-scream">${cleanContent}</div>`;
+            });
+            
+            // 3. Electric/Digital Text (`backticks`) -> Custom Code Class
+            html = html.replace(/`([^`]+)`/g, (match, content) => {
+                const cleanContent = content.trim().replace(/<br>/g, '');
+                return `<code class="digital">${cleanContent}</code>`;
+            });
+
+            // 4. Screaming (**bold**) -> Custom Class (must be done before standard bold)
+            html = html.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
+                const cleanContent = content.trim().replace(/<br>/g, '');
+                return `<span class="scream">${cleanContent}</span>`;
+            });
+            
+            // 5. Actions (*italic*) -> Standard Italic (em tag)
+            html = html.replace(/\*([^*]+)\*/g, (match, content) => {
+                const cleanContent = content.trim().replace(/<br>/g, '');
+                return `<em>${cleanContent}</em>`;
+            });
+            
+            return html;
+        }
+
+        function renderStory() {
+            let html = '';
+            const lastFullTurnIndex = chatHistory.findLastIndex((turn, i) => turn.role === 'model' && chatHistory[i-1]?.role === 'user');
+
+            for (let i = 0; i < chatHistory.length; i++) {
+                const turn = chatHistory[i];
+                if (turn.role === 'user' && chatHistory[i + 1] && chatHistory[i + 1].role === 'model') {
+                    const userPrompt = turn.parts[0].text;
+                    const modelResponse = chatHistory[i + 1].parts[0].text; // Raw text
+
+                    const styledResponse = parseAndStyleMarkdown(modelResponse);
+                    
+                    let footer = '';
+                    if (i + 1 === lastFullTurnIndex) {
+                        footer = `<div class="flex justify-end mt-3">
+                            <button onclick="narrateLastTurn()" class="bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-1 px-3 rounded-lg flex items-center space-x-1 transition duration-150 shadow-md">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.616 17.173a1 1 0 11-1.383-1.603 6 6 0 000-8.94c.3-.263.585-.01.954.218a8 8 0 010 12.118z" clip-rule="evenodd" />
+                                </svg>
+                                <span>Narrate Turn</span>
+                            </button>
+                        </div>`;
+                    }
+
+                    html += `<div class="p-4 bg-gray-50 border-t border-gray-200 mt-4 rounded-lg">
+                        <p class="font-bold text-indigo-700">You:</p>
+                        <p class="mb-3 text-gray-600">${userPrompt.replace(/\n/g, '<br>')}</p>
+                        <p class="font-bold text-green-700">Narrator:</p>
+                        <p class="text-gray-800">${styledResponse}</p>
+                        ${footer}
+                    </div>`;
+                }
+            }
+            storyOutput.innerHTML = html;
+            storyOutput.scrollTop = storyOutput.scrollHeight; 
+        }
+
+        // --- LLM API Interaction (Plain Text & Delimited) ---
+        
+        // Generic fetch with retry and raw text return
+        async function makeApiCall(apiUrl, payload, retries = 3) {
+            let rawResponseText = '';
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        rawResponseText = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}. Body: ${rawResponseText.substring(0, 150)}...`);
+                    }
+
+                    const result = await response.json();
+                    
+                    // Attempt to extract the text content from the response
+                    let responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                    if (!responseText) {
+                        // Fallback check for non-Gemini APIs
+                        responseText = result.text || result.response || null;
+                        if (!responseText) {
+                            throw new Error("API response was missing expected text content.");
+                        }
+                    }
+                    return responseText;
+
+                } catch (error) {
+                    if (i < retries - 1) {
+                        console.warn(`Retrying API call (${i + 1}/${retries})...`);
+                        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                    } else {
+                        console.error("Failed to get API response:", error);
+                        throw error; 
+                    }
+                }
+            }
+        }
+        
+        function parseStoryResponse(rawText) {
+            const parts = rawText.split(TRACKER_DELIMITER);
+            if (parts.length < 2) {
+                console.error("Failed to parse plain text response. Delimiter not found:", rawText);
+                return { story_text: rawText.trim(), tracker_update: currentTrackerContent };
+            }
+
+            return {
+                story_text: parts[0].trim(),
+                tracker_update: parts.slice(1).join(TRACKER_DELIMITER).trim() // Join remaining parts in case delimiter was in tracker content
+            };
+        }
+
+
+        // --- TTS Narration ---
+
+        async function narrateLastTurn() {
+            const lastModelTurn = chatHistory.findLast(t => t.role === 'model');
+
+            if (!lastModelTurn) {
+                alert("No story segment to narrate.");
+                return;
+            }
+
+            // Clean up markdown markers before narrating
+            let textToNarrate = lastModelTurn.parts[0].text;
+            textToNarrate = textToNarrate.replace(/##\s*/g, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+
+
+            const narrateBtn = document.querySelector('button[onclick="narrateLastTurn()"]');
+            if (!narrateBtn) return; 
+
+            const originalHtml = narrateBtn.innerHTML;
+            narrateBtn.disabled = true;
+            narrateBtn.innerHTML = '<svg class="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating Audio...';
+
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: textToNarrate }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: TTS_VOICE }
+                        }
+                    }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+            
+            const retries = 3;
+            let audioUrl = null;
+            
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(TTS_API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`TTS HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/L16;")) {
+                        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+                        
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        audioUrl = URL.createObjectURL(wavBlob);
+                        break; 
+                    } else {
+                        throw new Error("Invalid TTS response format or missing audio data.");
+                    }
+
+                } catch (error) {
+                    console.error(`TTS API call failed on retry ${i + 1}:`, error);
+                    if (i < retries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); 
+                    } else {
+                        alert("Failed to generate audio after multiple attempts. See console for details.");
+                    }
+                }
+            }
+
+            narrateBtn.disabled = false;
+            narrateBtn.innerHTML = originalHtml;
+
+            if (audioUrl) {
+                const audio = new Audio(audioUrl);
+                audio.play();
+            }
+        }
+        
+        // --- Dialogue Suggestion LLM (Still uses structured JSON for reliability) ---
+
+        async function suggestDialogue() {
+            if (isLoading) return;
+            setIsLoading(true);
+            dialogueSuggestionsDiv.classList.add('hidden');
+            dialogueSuggestionsDiv.innerHTML = '';
+
+            const lastModelTurn = chatHistory.findLast(t => t.role === 'model');
+
+            if (!lastModelTurn) {
+                dialogueSuggestionsDiv.innerHTML = '<p class="font-medium text-red-800">Start the story first to get context!</p>';
+                dialogueSuggestionsDiv.classList.remove('hidden');
+                setIsLoading(false);
+                return;
+            }
+
+            const context = `The last narrative segment from the Narrator was: "${lastModelTurn.parts[0].text.substring(0, 500)}...". Based on this, your main character needs to speak next.`;
+
+            const systemPrompt = `You are an expert dialogue writer for a ${genre} story. Your task is to generate 3 distinct, compelling dialogue options (short lines or brief actions) that the user's character could take next in the story.
+            RULES:
+            1. Output: Always respond with a single JSON object defined by the schema: {"suggestions": ["...", "...", "..."]}.
+            2. suggestions: A JSON array of exactly 3 strings. Each string must be a piece of dialogue or a key action appropriate for the character and genre.`;
+
+            const suggestionSchema = {
+                type: "OBJECT",
+                properties: {
+                    "suggestions": { 
+                        "type": "ARRAY",
+                        "items": { "type": "STRING" }
+                    }
+                },
+                propertyOrdering: ["suggestions"]
+            };
+            
+            const suggestionConfig = {
+                responseMimeType: "application/json",
+                responseSchema: suggestionSchema
+            };
+
+            const contents = [
+                ...chatHistory.slice(-4), // Last 4 turns for brief context
+                { role: "user", parts: [{ text: context }] }
+            ];
+
+            const apiUrl = getApiUrl();
+            const isGeminiApi = apiUrl === GEMINI_API_URL;
+            
+            const payload = {
+                contents: contents,
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+            
+            // NOTE: Suggestions still use structured config for reliable parsing
+            if (isGeminiApi) {
+                payload.generationConfig = suggestionConfig;
+            }
+            
+            try {
+                 const rawText = await makeApiCall(apiUrl, payload);
+                 let result;
+                 
+                 if (isGeminiApi) {
+                    // Gemini JSON response might have ```json fences that need stripping
+                    let jsonString = rawText.trim();
+                    if (jsonString.startsWith('```json')) { jsonString = jsonString.substring('```json'.length); }
+                    if (jsonString.startsWith('```')) { jsonString = jsonString.substring('```'.length); }
+                    if (jsonString.endsWith('```')) { jsonString = jsonString.substring(0, jsonString.length - '```'.length); }
+                    jsonString = jsonString.trim();
+                    result = JSON.parse(jsonString);
+                 } else {
+                    // For custom APIs, we assume the response text is the JSON string
+                    result = JSON.parse(rawText);
+                 }
+
+
+                if (result && Array.isArray(result.suggestions) && result.suggestions.length >= 1) {
+                    let html = '<p class="font-bold mb-1">Dialogue Suggestions (Click to use):</p><ul class="list-disc ml-4 space-y-1">';
+                    result.suggestions.slice(0, 3).forEach(suggestion => {
+                        const safeSuggestion = suggestion.replace(/'/g, "\\'"); 
+                        html += `<li class="hover:text-yellow-900 cursor-pointer transition-colors duration-150" onclick="document.getElementById('actionInput').value = '${safeSuggestion}'; document.getElementById('dialogueSuggestions').classList.add('hidden');">${suggestion}</li>`;
+                    });
+                    html += '</ul>';
+                    dialogueSuggestionsDiv.innerHTML = html;
+                    dialogueSuggestionsDiv.classList.remove('hidden');
+                } else {
+                    throw new Error("Invalid response structure from Dialogue AI.");
+                }
+
+            } catch (error) {
+                console.error("Error suggesting dialogue:", error);
+                dialogueSuggestionsDiv.innerHTML = `<p class="font-medium text-red-800">Error: Failed to fetch suggestions. Check console/API endpoint.</p>`;
+                dialogueSuggestionsDiv.classList.remove('hidden');
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+
+        // --- Core Story Functions ---
+
+        async function startStory() {
+            if (isLoading) return;
+            setIsLoading(true);
+
+            genre = document.getElementById('genreInput').value.trim();
+            storySetup = document.getElementById('setupInput').value.trim();
+
+            if (!genre || !storySetup) {
+                alert("Please provide a genre and a story setup.");
+                setIsLoading(false);
+                return;
+            }
+            
+            chatHistory = []; 
+            infoTrackerField.value = "Setting up the world..."; 
+
+            const initialPrompt = `Start a new ${genre} story based on the setup: "${storySetup}". The first turn should introduce the protagonist and the immediate situation. The user's first action is to decide what to do next.`;
+
+            const systemPrompt = `You are the master narrator of a ${genre} story. Your task is to write the next segment of the narrative and provide an updated summary for the key information tracker.
+            
+            **NARRATION RULES (Mandatory Markdown):**
+            * Use single asterisks (*like this*) for character actions.
+            * Use double asterisks (**like this**) for screaming or intense vocalizations.
+            * Use markdown headings (## LIKE THIS) for extremely loud or powerful screams.
+            * Use backticks (\`like this\`) for all digital communication, calls, or anything electrical.
+            
+            **RESPONSE FORMAT (Strictly Plain Text):**
+            1. Write the Narrative first (around 2-3 paragraphs), including the markdown rules above.
+            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
+            3. Follow the delimiter with the Key Information Tracker Update (a concise summary of lore, characters, and plot setup).
+            
+            Example Output:
+            The detective slid *across the slick floor* as the neon sign sputtered. He heard the metallic voice crackle, "**NO ESCAPE!**" from the intercom.
+            
+            ${TRACKER_DELIMITER}
+            
+            - **Protagonist:** Detective Kaito, looking for courier.
+            - **Objective:** Find missing data courier.
+            - **Location:** Neo-Kyoto, District 7.
+            - **New Event:** Escape attempt failed.`;
+
+            const contents = createContentParts(initialPrompt);
+
+            try {
+                const apiUrl = getApiUrl();
+                const payload = {
+                    contents: contents,
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+                
+                const rawResponse = await makeApiCall(apiUrl, payload);
+                const result = parseStoryResponse(rawResponse);
+
+                if (result.story_text) {
+                    chatHistory.push({ role: "model", parts: [{ text: result.story_text }] });
+                    currentTrackerContent = result.tracker_update || currentTrackerContent;
+
+                    await saveStoryState();
+                } else {
+                    throw new Error("Invalid response structure from Narrator AI. Delimiter or content missing.");
+                }
+
+            } catch (error) {
+                console.error("Error starting story:", error);
+                storyOutput.innerHTML = `<p class="text-red-500">Error: Could not start the story. The AI may be inaccessible or returned malformed data. Please check the console for details.</p>`;
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        async function generateTurn() {
+            if (isLoading || chatHistory.length === 0) return;
+            setIsLoading(true);
+
+            const inputField = document.getElementById('actionInput');
+            const userPrompt = inputField.value.trim();
+            
+            if (!userPrompt) {
+                alert("Please enter an action.");
+                setIsLoading(false);
+                return;
+            }
+
+            dialogueSuggestionsDiv.classList.add('hidden');
+            dialogueSuggestionsDiv.innerHTML = '';
+
+            currentTrackerContent = infoTrackerField.value;
+
+            chatHistory.push({ role: "user", parts: [{ text: userPrompt }] });
+
+            const systemPrompt = `You are the master narrator of a ${genre} story. Your task is to continue the narrative and provide a concise, updated summary for the key information tracker.
+            
+            **NARRATION RULES (Mandatory Markdown):**
+            * Use single asterisks (*like this*) for character actions.
+            * Use double asterisks (**like this**) for screaming or intense vocalizations.
+            * Use markdown headings (## LIKE THIS) for extremely loud or powerful screams.
+            * Use backticks (\`like this\`) for all digital communication, calls, or anything electrical.
+            
+            **RESPONSE FORMAT (Strictly Plain Text):**
+            1. Write the Narrative first (around 2-3 paragraphs), including the markdown rules above.
+            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
+            3. Follow the delimiter with the Key Information Tracker Update (update the existing tracker content based on the entire conversation history and the new story segment).
+            
+            The current Key Information Tracker is:\n---\n${currentTrackerContent}\n---\n
+            The user's last action was: "${userPrompt}".`;
+
+            // Prepare history for the model. 
+            const contents = [
+                ...chatHistory.slice(0, -1), // Everything before the last user turn
+                { role: "user", parts: [{ text: `User action: ${userPrompt}. The story genre is ${genre}. The current tracker is: ${currentTrackerContent}. Generate the next story segment and update the tracker, separated by ${TRACKER_DELIMITER}.` }] }
+            ];
+
+            try {
+                const apiUrl = getApiUrl();
+                const payload = {
+                    contents: contents,
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+                
+                const rawResponse = await makeApiCall(apiUrl, payload);
+                const result = parseStoryResponse(rawResponse);
+
+                if (result.story_text) {
+                    chatHistory.pop(); // Remove the structured user turn
+                    chatHistory.push({ role: "user", parts: [{ text: userPrompt }] });
+                    chatHistory.push({ role: "model", parts: [{ text: result.story_text }] });
+                    
+                    currentTrackerContent = result.tracker_update || currentTrackerContent;
+
+                    inputField.value = '';
+                    await saveStoryState();
+                } else {
+                    throw new Error("Invalid response structure from Narrator AI.");
+                }
+
+            } catch (error) {
+                console.error("Error generating turn:", error);
+                storyOutput.innerHTML += `<p class="text-red-500">Error: Could not generate the next turn. The AI may be inaccessible or returned malformed data. Please check the console for details.</p>`;
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+
+        async function generateStarterTracker() {
+            if (isLoading) return;
+            setIsLoading(true);
+
+            const currentGenre = genre || document.getElementById('genreInput').value.trim();
+            const currentSetup = storySetup || document.getElementById('setupInput').value.trim();
+
+            if (!currentGenre || !currentSetup) {
+                 alert("Please set up the story genre and premise first.");
+                 setIsLoading(false);
+                 return;
+            }
+
+            const prompt = `Based on the genre "${currentGenre}" and the story setup: "${currentSetup}", create an initial "Key Information Tracker" entry. The entry should be concise, thematic, and list the most important initial elements (e.g., world name, main character's objective, unique lore elements).`;
+
+            const systemPrompt = `You are a specialized AI designed to output plain text for a story's key information tracker. Do not generate a story segment. Only populate the Tracker Update based on the prompt. Set the Narrative to an empty string.
+            
+            **RESPONSE FORMAT (Strictly Plain Text):**
+            1. Write an empty line for the Narrative.
+            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
+            3. Follow the delimiter with the Key Information Tracker Update.`;
+
+            const contents = createContentParts(prompt);
+
+            try {
+                const apiUrl = getApiUrl();
+                const payload = {
+                    contents: contents,
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+                
+                const rawResponse = await makeApiCall(apiUrl, payload);
+                const result = parseStoryResponse(rawResponse);
+
+                if (result.tracker_update) {
+                    currentTrackerContent = result.tracker_update;
+                    infoTrackerField.value = currentTrackerContent;
+                    
+                    if (chatHistory.length > 0) {
+                        await saveStoryState(); 
+                    }
+                } else {
+                     throw new Error("Invalid response structure for starter tracker.");
+                }
+
+            } catch (error) {
+                console.error("Error generating starter tracker:", error);
+                alert(`Error: Could not generate initial tracker content. The AI may be inaccessible or returned malformed data. ${error.message}`);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        
+        // --- Event Listeners ---
+
+        startStoryBtn.addEventListener('click', startStory);
+        sendActionBtn.addEventListener('click', generateTurn);
+        generateTrackerBtn.addEventListener('click', generateStarterTracker);
+        npcSuggestBtn.addEventListener('click', suggestDialogue);
+        
+        resetBtn.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to reset the entire story? This cannot be undone.")) {
+                chatHistory = [];
+                genre = '';
+                storySetup = '';
+                currentTrackerContent = '';
+                document.getElementById('genreInput').value = 'High Fantasy';
+                document.getElementById('setupInput').value = "You are a grizzled detective in a neon-drenched cyberpunk city, searching for a missing data courier who holds secrets to a mega-corporation.";
+                infoTrackerField.value = '';
+                dialogueSuggestionsDiv.classList.add('hidden');
+                
+                await saveStoryState(); 
+            }
+        });
+
+    </script>
+</body>
+</html>
