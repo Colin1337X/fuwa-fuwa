@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Story Weaver</title>
+    <title>AI Story Weaver with Custom Backend</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -79,17 +79,19 @@
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">1. Start Your Story</h2>
 
             <!-- API Configuration -->
-            <label for="apiUrlInput" class="block text-sm font-medium text-gray-700 mb-1">Custom API Endpoint URL (Leave blank to use Gemini API)</label>
-            <input type="text" id="apiUrlInput" value="" placeholder="e.g., http://localhost:5000/api/generate" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
+            <label for="apiUrlInput" class="block text-sm font-medium text-gray-700 mb-1">
+                Custom API Endpoint URL (e.g., KoboldCpp: `http://localhost:5001/v1/chat/completions`)
+            </label>
+            <input type="text" id="apiUrlInput" value="" placeholder="Leave blank to use Gemini API" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500">
             
             <label for="genreInput" class="block text-sm font-medium text-gray-700 mb-1">Genre</label>
-            <input type="text" id="genreInput" value="High Fantasy" placeholder="e.g., Sci-Fi, Film Noir, Horror" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+            <input type="text" id="genreInput" value="Classic Fantasy RPG" placeholder="e.g., Sci-Fi, Film Noir, Horror" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
 
             <label for="setupInput" class="block text-sm font-medium text-gray-700 mb-1">Setup / Theme</label>
-            <textarea id="setupInput" rows="4" placeholder="e.g., A lone wizard must retrieve a stolen artifact from a corrupted king, facing monstrous guardians in his path." class="w-full p-3 mb-6 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">You are a grizzled detective in a neon-drenched cyberpunk city, searching for a missing data courier who holds secrets to a mega-corporation.</textarea>
+            <textarea id="setupInput" rows="4" placeholder="e.g., A lone wizard must retrieve a stolen artifact from a corrupted king, facing monstrous guardians in his path." class="w-full p-3 mb-6 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">You are the last Knight of the Sun, awakened in a forgotten crypt by a cryptic artifact, destined to explore the endlessly branching paths of a ruined world.</textarea>
 
             <button id="startStoryBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md hover:shadow-lg">
-                Start Adventure
+                Start Endless Adventure
             </button>
         </div>
 
@@ -99,7 +101,7 @@
 
             <!-- Story Output -->
             <div id="storyOutput" class="p-6 border border-gray-200 rounded-lg overflow-y-auto max-h-[60vh]">
-                <!-- Story turns will be inserted here -->
+                <p class="text-gray-500">Narrative will appear here after you start the story...</p>
             </div>
 
             <!-- User Input -->
@@ -208,8 +210,11 @@
         // --- Utility Functions ---
 
         function getApiUrl() {
-            const customUrl = apiUrlInput.value.trim();
-            return customUrl || GEMINI_API_URL;
+            return apiUrlInput.value.trim() || GEMINI_API_URL;
+        }
+
+        function isGeminiApi(url) {
+            return url === GEMINI_API_URL;
         }
 
         function setIsLoading(state) {
@@ -457,7 +462,7 @@
         // --- LLM API Interaction (Plain Text & Delimited) ---
         
         // Generic fetch with retry and raw text return
-        async function makeApiCall(apiUrl, payload, retries = 3) {
+        async function makeApiCall(apiUrl, payload, isGemini, retries = 3) {
             let rawResponseText = '';
             for (let i = 0; i < retries; i++) {
                 try {
@@ -474,15 +479,23 @@
 
                     const result = await response.json();
                     
-                    // Attempt to extract the text content from the response
-                    let responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    let responseText;
+                    
+                    if (isGemini) {
+                        // Gemini structure
+                        responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    } else {
+                        // KoboldCpp/OpenAI Chat Completions structure
+                        responseText = result.choices?.[0]?.message?.content;
+                        
+                        if (!responseText) {
+                            // Fallback for custom APIs (might be using a non-chat completion endpoint)
+                            responseText = result.text || result.response || null;
+                        }
+                    }
 
                     if (!responseText) {
-                        // Fallback check for non-Gemini APIs
-                        responseText = result.text || result.response || null;
-                        if (!responseText) {
-                            throw new Error("API response was missing expected text content.");
-                        }
+                        throw new Error("API response was missing expected text content.");
                     }
                     return responseText;
 
@@ -510,15 +523,33 @@
                 tracker_update: parts.slice(1).join(TRACKER_DELIMITER).trim() // Join remaining parts in case delimiter was in tracker content
             };
         }
+        
+        function getSystemPrompt() {
+            return `You are the master narrator of a ${genre} story. Your task is to write the next segment of the narrative and provide an updated summary for the key information tracker.
+            
+            **NARRATION RULES (Mandatory Markdown):**
+            * Use single asterisks (*like this*) for character actions.
+            * Use double asterisks (**like this**) for screaming or intense vocalizations.
+            * Use markdown headings (## LIKE THIS) for extremely loud or powerful screams.
+            * Use backticks (\`like this\`) for all digital communication, calls, or anything electrical.
+            
+            **RESPONSE FORMAT (Strictly Plain Text):**
+            1. Write the Narrative first (around 2-3 paragraphs), including the markdown rules above.
+            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
+            3. Follow the delimiter with the Key Information Tracker Update (a concise summary of lore, characters, and plot setup).`;
+        }
 
 
         // --- TTS Narration ---
 
         async function narrateLastTurn() {
+            // Implementation of narrateLastTurn (TTS) remains the same
             const lastModelTurn = chatHistory.findLast(t => t.role === 'model');
 
             if (!lastModelTurn) {
-                alert("No story segment to narrate.");
+                // Custom alert style for no-alert policy
+                storyOutput.innerHTML += `<div class="p-3 my-2 bg-red-100 text-red-700 rounded-lg">No story segment to narrate.</div>`;
+                storyOutput.scrollTop = storyOutput.scrollHeight; 
                 return;
             }
 
@@ -588,7 +619,8 @@
                     if (i < retries - 1) {
                         await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); 
                     } else {
-                        alert("Failed to generate audio after multiple attempts. See console for details.");
+                        // Replace alert with custom modal logic if this were a full application
+                        console.log("Failed to generate audio after multiple attempts.");
                     }
                 }
             }
@@ -602,7 +634,7 @@
             }
         }
         
-        // --- Dialogue Suggestion LLM (Still uses structured JSON for reliability) ---
+        // --- Dialogue Suggestion LLM (Simplified for Kobold/Gemini) ---
 
         async function suggestDialogue() {
             if (isLoading) return;
@@ -618,10 +650,14 @@
                 setIsLoading(false);
                 return;
             }
-
+            
+            const apiUrl = getApiUrl();
+            const isGemini = isGeminiApi(apiUrl);
+            
             const context = `The last narrative segment from the Narrator was: "${lastModelTurn.parts[0].text.substring(0, 500)}...". Based on this, your main character needs to speak next.`;
 
-            const systemPrompt = `You are an expert dialogue writer for a ${genre} story. Your task is to generate 3 distinct, compelling dialogue options (short lines or brief actions) that the user's character could take next in the story.
+            // Note: Keeping the suggestion prompt the same, but adapting the payload structure.
+            const suggestionSystemPrompt = `You are an expert dialogue writer for a ${genre} story. Your task is to generate 3 distinct, compelling dialogue options (short lines or brief actions) that the user's character could take next in the story.
             RULES:
             1. Output: Always respond with a single JSON object defined by the schema: {"suggestions": ["...", "...", "..."]}.
             2. suggestions: A JSON array of exactly 3 strings. Each string must be a piece of dialogue or a key action appropriate for the character and genre.`;
@@ -642,42 +678,48 @@
                 responseSchema: suggestionSchema
             };
 
-            const contents = [
-                ...chatHistory.slice(-4), // Last 4 turns for brief context
-                { role: "user", parts: [{ text: context }] }
-            ];
+            let payload;
 
-            const apiUrl = getApiUrl();
-            const isGeminiApi = apiUrl === GEMINI_API_URL;
-            
-            const payload = {
-                contents: contents,
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-            };
-            
-            // NOTE: Suggestions still use structured config for reliable parsing
-            if (isGeminiApi) {
-                payload.generationConfig = suggestionConfig;
+            if (isGemini) {
+                payload = {
+                    contents: [
+                        ...chatHistory.slice(-4), 
+                        { role: "user", parts: [{ text: context }] }
+                    ],
+                    systemInstruction: { parts: [{ text: suggestionSystemPrompt }] },
+                    generationConfig: suggestionConfig
+                };
+            } else {
+                 // KoboldCpp/OpenAI-compatible payload
+                const messages = [
+                    { "role": "system", "content": suggestionSystemPrompt },
+                    ...chatHistory.slice(-4).map(turn => ({ 
+                        role: turn.role, 
+                        content: turn.parts[0].text 
+                    })),
+                    { "role": "user", "content": context }
+                ];
+                
+                payload = {
+                    "model": "local_model", // Can be anything for local APIs like KoboldCpp
+                    "messages": messages,
+                    "temperature": 0.8,
+                    "response_format": { "type": "json_object" } // Request JSON output
+                };
             }
             
             try {
-                 const rawText = await makeApiCall(apiUrl, payload);
+                 const rawText = await makeApiCall(apiUrl, payload, isGemini);
                  let result;
                  
-                 if (isGeminiApi) {
-                    // Gemini JSON response might have ```json fences that need stripping
-                    let jsonString = rawText.trim();
-                    if (jsonString.startsWith('```json')) { jsonString = jsonString.substring('```json'.length); }
-                    if (jsonString.startsWith('```')) { jsonString = jsonString.substring('```'.length); }
-                    if (jsonString.endsWith('```')) { jsonString = jsonString.substring(0, jsonString.length - '```'.length); }
-                    jsonString = jsonString.trim();
-                    result = JSON.parse(jsonString);
-                 } else {
-                    // For custom APIs, we assume the response text is the JSON string
-                    result = JSON.parse(rawText);
-                 }
+                 // Handle JSON parsing from either fenced or raw JSON output
+                 let jsonString = rawText.trim();
+                 if (jsonString.startsWith('```json')) { jsonString = jsonString.substring('```json'.length); }
+                 if (jsonString.startsWith('```')) { jsonString = jsonString.substring('```'.length); }
+                 if (jsonString.endsWith('```')) { jsonString = jsonString.substring(0, jsonString.length - '```'.length); }
+                 jsonString = jsonString.trim();
+                 
+                 result = JSON.parse(jsonString);
 
 
                 if (result && Array.isArray(result.suggestions) && result.suggestions.length >= 1) {
@@ -690,12 +732,12 @@
                     dialogueSuggestionsDiv.innerHTML = html;
                     dialogueSuggestionsDiv.classList.remove('hidden');
                 } else {
-                    throw new Error("Invalid response structure from Dialogue AI.");
+                    throw new Error("Invalid response structure from Dialogue AI. Check if your model supports JSON output.");
                 }
 
             } catch (error) {
                 console.error("Error suggesting dialogue:", error);
-                dialogueSuggestionsDiv.innerHTML = `<p class="font-medium text-red-800">Error: Failed to fetch suggestions. Check console/API endpoint.</p>`;
+                dialogueSuggestionsDiv.innerHTML = `<p class="font-medium text-red-800">Error: Failed to fetch suggestions. Check console/API endpoint (${apiUrl}).</p>`;
                 dialogueSuggestionsDiv.classList.remove('hidden');
             } finally {
                 setIsLoading(false);
@@ -713,49 +755,44 @@
             storySetup = document.getElementById('setupInput').value.trim();
 
             if (!genre || !storySetup) {
-                alert("Please provide a genre and a story setup.");
+                console.log("Please provide a genre and a story setup.");
                 setIsLoading(false);
                 return;
             }
             
             chatHistory = []; 
             infoTrackerField.value = "Setting up the world..."; 
-
+            
+            const apiUrl = getApiUrl();
+            const isGemini = isGeminiApi(apiUrl);
+            
             const initialPrompt = `Start a new ${genre} story based on the setup: "${storySetup}". The first turn should introduce the protagonist and the immediate situation. The user's first action is to decide what to do next.`;
+            const systemPrompt = getSystemPrompt();
 
-            const systemPrompt = `You are the master narrator of a ${genre} story. Your task is to write the next segment of the narrative and provide an updated summary for the key information tracker.
-            
-            **NARRATION RULES (Mandatory Markdown):**
-            * Use single asterisks (*like this*) for character actions.
-            * Use double asterisks (**like this**) for screaming or intense vocalizations.
-            * Use markdown headings (## LIKE THIS) for extremely loud or powerful screams.
-            * Use backticks (\`like this\`) for all digital communication, calls, or anything electrical.
-            
-            **RESPONSE FORMAT (Strictly Plain Text):**
-            1. Write the Narrative first (around 2-3 paragraphs), including the markdown rules above.
-            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
-            3. Follow the delimiter with the Key Information Tracker Update (a concise summary of lore, characters, and plot setup).
-            
-            Example Output:
-            The detective slid *across the slick floor* as the neon sign sputtered. He heard the metallic voice crackle, "**NO ESCAPE!**" from the intercom.
-            
-            ${TRACKER_DELIMITER}
-            
-            - **Protagonist:** Detective Kaito, looking for courier.
-            - **Objective:** Find missing data courier.
-            - **Location:** Neo-Kyoto, District 7.
-            - **New Event:** Escape attempt failed.`;
+            let payload;
 
-            const contents = createContentParts(initialPrompt);
-
-            try {
-                const apiUrl = getApiUrl();
-                const payload = {
-                    contents: contents,
+            if (isGemini) {
+                payload = {
+                    contents: createContentParts(initialPrompt),
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                 };
+            } else {
+                // KoboldCpp/OpenAI-compatible payload
+                const messages = [
+                    { "role": "system", "content": systemPrompt },
+                    { "role": "user", "content": initialPrompt }
+                ];
                 
-                const rawResponse = await makeApiCall(apiUrl, payload);
+                payload = {
+                    "model": "local_model",
+                    "messages": messages,
+                    "temperature": 0.9,
+                    "max_tokens": 1500
+                };
+            }
+
+            try {
+                const rawResponse = await makeApiCall(apiUrl, payload, isGemini);
                 const result = parseStoryResponse(rawResponse);
 
                 if (result.story_text) {
@@ -783,7 +820,7 @@
             const userPrompt = inputField.value.trim();
             
             if (!userPrompt) {
-                alert("Please enter an action.");
+                console.log("Please enter an action.");
                 setIsLoading(false);
                 return;
             }
@@ -792,44 +829,57 @@
             dialogueSuggestionsDiv.innerHTML = '';
 
             currentTrackerContent = infoTrackerField.value;
-
-            chatHistory.push({ role: "user", parts: [{ text: userPrompt }] });
-
-            const systemPrompt = `You are the master narrator of a ${genre} story. Your task is to continue the narrative and provide a concise, updated summary for the key information tracker.
             
-            **NARRATION RULES (Mandatory Markdown):**
-            * Use single asterisks (*like this*) for character actions.
-            * Use double asterisks (**like this**) for screaming or intense vocalizations.
-            * Use markdown headings (## LIKE THIS) for extremely loud or powerful screams.
-            * Use backticks (\`like this\`) for all digital communication, calls, or anything electrical.
+            const apiUrl = getApiUrl();
+            const isGemini = isGeminiApi(apiUrl);
             
-            **RESPONSE FORMAT (Strictly Plain Text):**
-            1. Write the Narrative first (around 2-3 paragraphs), including the markdown rules above.
-            2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
-            3. Follow the delimiter with the Key Information Tracker Update (update the existing tracker content based on the entire conversation history and the new story segment).
+            // Push the user prompt immediately for display, but use a more structured prompt for the model
+            chatHistory.push({ role: "user", parts: [{ text: userPrompt }] }); 
+
+            const systemPrompt = getSystemPrompt();
+            const userContext = `The user's last action was: "${userPrompt}". The current Key Information Tracker is:\n---\n${currentTrackerContent}\n---\nContinue the narrative and provide the updated tracker content, separated by ${TRACKER_DELIMITER}.`;
             
-            The current Key Information Tracker is:\n---\n${currentTrackerContent}\n---\n
-            The user's last action was: "${userPrompt}".`;
+            let payload;
 
-            // Prepare history for the model. 
-            const contents = [
-                ...chatHistory.slice(0, -1), // Everything before the last user turn
-                { role: "user", parts: [{ text: `User action: ${userPrompt}. The story genre is ${genre}. The current tracker is: ${currentTrackerContent}. Generate the next story segment and update the tracker, separated by ${TRACKER_DELIMITER}.` }] }
-            ];
+            // Prepare history for the model. Slice off the temporary user turn just added.
+            const conversationHistoryForModel = chatHistory.slice(0, -1);
 
-            try {
-                const apiUrl = getApiUrl();
-                const payload = {
-                    contents: contents,
+            if (isGemini) {
+                payload = {
+                    contents: [
+                        ...conversationHistoryForModel,
+                        { role: "user", parts: [{ text: userContext }] }
+                    ],
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                 };
+            } else {
+                 // KoboldCpp/OpenAI-compatible payload
+                const messages = [
+                    { "role": "system", "content": systemPrompt },
+                    // Convert chatHistory to the simple content/role format for the API
+                    ...conversationHistoryForModel.map(turn => ({ 
+                        role: turn.role, 
+                        content: turn.parts[0].text 
+                    })),
+                    { "role": "user", "content": userContext }
+                ];
                 
-                const rawResponse = await makeApiCall(apiUrl, payload);
+                payload = {
+                    "model": "local_model",
+                    "messages": messages,
+                    "temperature": 0.9,
+                    "max_tokens": 1500
+                };
+            }
+
+            try {
+                const rawResponse = await makeApiCall(apiUrl, payload, isGemini);
                 const result = parseStoryResponse(rawResponse);
 
                 if (result.story_text) {
-                    chatHistory.pop(); // Remove the structured user turn
-                    chatHistory.push({ role: "user", parts: [{ text: userPrompt }] });
+                    // This is where we remove the temporary turn and replace with the real one
+                    chatHistory.pop(); // Remove the placeholder user turn
+                    chatHistory.push({ role: "user", parts: [{ text: userPrompt }] }); // Re-add the clean user turn
                     chatHistory.push({ role: "model", parts: [{ text: result.story_text }] });
                     
                     currentTrackerContent = result.tracker_update || currentTrackerContent;
@@ -837,7 +887,7 @@
                     inputField.value = '';
                     await saveStoryState();
                 } else {
-                    throw new Error("Invalid response structure from Narrator AI.");
+                    throw new Error("Invalid response structure from Narrator AI. Delimiter or content missing.");
                 }
 
             } catch (error) {
@@ -857,30 +907,48 @@
             const currentSetup = storySetup || document.getElementById('setupInput').value.trim();
 
             if (!currentGenre || !currentSetup) {
-                 alert("Please set up the story genre and premise first.");
+                 console.log("Please set up the story genre and premise first.");
                  setIsLoading(false);
                  return;
             }
 
             const prompt = `Based on the genre "${currentGenre}" and the story setup: "${currentSetup}", create an initial "Key Information Tracker" entry. The entry should be concise, thematic, and list the most important initial elements (e.g., world name, main character's objective, unique lore elements).`;
 
-            const systemPrompt = `You are a specialized AI designed to output plain text for a story's key information tracker. Do not generate a story segment. Only populate the Tracker Update based on the prompt. Set the Narrative to an empty string.
+            const trackerSystemPrompt = `You are a specialized AI designed to output plain text for a story's key information tracker. Do not generate a story segment. Only populate the Tracker Update based on the prompt. 
             
             **RESPONSE FORMAT (Strictly Plain Text):**
             1. Write an empty line for the Narrative.
             2. Follow the Narrative immediately with the exact delimiter: ${TRACKER_DELIMITER}
             3. Follow the delimiter with the Key Information Tracker Update.`;
 
-            const contents = createContentParts(prompt);
+            const apiUrl = getApiUrl();
+            const isGemini = isGeminiApi(apiUrl);
+            
+            let payload;
+
+            if (isGemini) {
+                payload = {
+                    contents: createContentParts(prompt),
+                    systemInstruction: { parts: [{ text: trackerSystemPrompt }] },
+                };
+            } else {
+                // KoboldCpp/OpenAI-compatible payload
+                const messages = [
+                    { "role": "system", "content": trackerSystemPrompt },
+                    { "role": "user", "content": prompt }
+                ];
+                
+                payload = {
+                    "model": "local_model",
+                    "messages": messages,
+                    "temperature": 0.5,
+                    "max_tokens": 500
+                };
+            }
+
 
             try {
-                const apiUrl = getApiUrl();
-                const payload = {
-                    contents: contents,
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                };
-                
-                const rawResponse = await makeApiCall(apiUrl, payload);
+                const rawResponse = await makeApiCall(apiUrl, payload, isGemini);
                 const result = parseStoryResponse(rawResponse);
 
                 if (result.tracker_update) {
@@ -896,7 +964,7 @@
 
             } catch (error) {
                 console.error("Error generating starter tracker:", error);
-                alert(`Error: Could not generate initial tracker content. The AI may be inaccessible or returned malformed data. ${error.message}`);
+                console.log(`Error: Could not generate initial tracker content. The AI may be inaccessible or returned malformed data. ${error.message}`);
             } finally {
                 setIsLoading(false);
             }
@@ -915,8 +983,9 @@
                 genre = '';
                 storySetup = '';
                 currentTrackerContent = '';
-                document.getElementById('genreInput').value = 'High Fantasy';
-                document.getElementById('setupInput').value = "You are a grizzled detective in a neon-drenched cyberpunk city, searching for a missing data courier who holds secrets to a mega-corporation.";
+                // Reset to default RPG values
+                document.getElementById('genreInput').value = 'Classic Fantasy RPG';
+                document.getElementById('setupInput').value = "You are the last Knight of the Sun, awakened in a forgotten crypt by a cryptic artifact, destined to explore the endlessly branching paths of a ruined world.";
                 infoTrackerField.value = '';
                 dialogueSuggestionsDiv.classList.add('hidden');
                 
