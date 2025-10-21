@@ -88,6 +88,7 @@
             <input type="text" id="genreInput" value="Classic Fantasy RPG" placeholder="e.g., Sci-Fi, Film Noir, Horror" class="w-full p-3 mb-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
 
             <label for="setupInput" class="block text-sm font-medium text-gray-700 mb-1">Setup / Theme</label>
+            <input type="file" id="themeFileInput" accept=".txt,.md" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 mb-2 cursor-pointer"/>
             <textarea id="setupInput" rows="4" placeholder="e.g., A lone wizard must retrieve a stolen artifact from a corrupted king, facing monstrous guardians in his path." class="w-full p-3 mb-6 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">You are the last Knight of the Sun, awakened in a forgotten crypt by a cryptic artifact, destined to explore the endlessly branching paths of a ruined world.</textarea>
 
             <button id="startStoryBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md hover:shadow-lg">
@@ -155,6 +156,34 @@
         </div>
     </div>
 
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modalTitle">Reset Story?</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500" id="modalBody">
+                        Are you sure you want to reset the entire story? This action cannot be undone.
+                    </p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="confirmOkBtn" class="px-4 py-2 bg-red-500 text-white text-base font-medium rounded-md w-auto shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300">
+                        Yes, Reset
+                    </button>
+                    <button id="confirmCancelBtn" class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-auto ml-2 shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <script type="module">
         // Global variables for Firebase access provided by the environment
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -203,6 +232,8 @@
         const generateTrackerBtn = document.getElementById('generateTrackerBtn');
         const dialogueSuggestionsDiv = document.getElementById('dialogueSuggestions');
         const npcSuggestBtn = document.getElementById('npcSuggestBtn');
+        const themeFileInput = document.getElementById('themeFileInput');
+        const setupInput = document.getElementById('setupInput');
 
         // Expose narrate function globally for the HTML inline onclick
         window.narrateLastTurn = narrateLastTurn;
@@ -619,7 +650,6 @@
                     if (i < retries - 1) {
                         await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000)); 
                     } else {
-                        // Replace alert with custom modal logic if this were a full application
                         console.log("Failed to generate audio after multiple attempts.");
                     }
                 }
@@ -800,6 +830,11 @@
                     currentTrackerContent = result.tracker_update || currentTrackerContent;
 
                     await saveStoryState();
+                     // **FIX:** Manually update the UI to ensure the transition from setup to game happens immediately.
+                    setupSection.style.display = 'none';
+                    gameSection.style.display = 'block';
+                    renderStory();
+
                 } else {
                     throw new Error("Invalid response structure from Narrator AI. Delimiter or content missing.");
                 }
@@ -970,6 +1005,30 @@
             }
         }
         
+        // --- Modal Logic ---
+        const confirmModal = document.getElementById('confirmModal');
+        const confirmOkBtn = document.getElementById('confirmOkBtn');
+        const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+        let confirmCallback = null;
+
+        function showConfirm(title, body, callback) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').textContent = body;
+            confirmCallback = callback;
+            confirmModal.classList.remove('hidden');
+        }
+
+        confirmOkBtn.addEventListener('click', () => {
+            if (confirmCallback) {
+                confirmCallback();
+            }
+            confirmModal.classList.add('hidden');
+        });
+
+        confirmCancelBtn.addEventListener('click', () => {
+            confirmModal.classList.add('hidden');
+        });
+
         // --- Event Listeners ---
 
         startStoryBtn.addEventListener('click', startStory);
@@ -977,20 +1036,39 @@
         generateTrackerBtn.addEventListener('click', generateStarterTracker);
         npcSuggestBtn.addEventListener('click', suggestDialogue);
         
-        resetBtn.addEventListener('click', async () => {
-            if (confirm("Are you sure you want to reset the entire story? This cannot be undone.")) {
-                chatHistory = [];
-                genre = '';
-                storySetup = '';
-                currentTrackerContent = '';
-                // Reset to default RPG values
-                document.getElementById('genreInput').value = 'Classic Fantasy RPG';
-                document.getElementById('setupInput').value = "You are the last Knight of the Sun, awakened in a forgotten crypt by a cryptic artifact, destined to explore the endlessly branching paths of a ruined world.";
-                infoTrackerField.value = '';
-                dialogueSuggestionsDiv.classList.add('hidden');
-                
-                await saveStoryState(); 
+        themeFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setupInput.value = e.target.result;
+                };
+                reader.onerror = (e) => {
+                    console.error("File could not be read:", e);
+                    setupInput.value = "Error: Could not read file."
+                };
+                reader.readAsText(file);
             }
+        });
+
+        resetBtn.addEventListener('click', () => {
+             showConfirm(
+                "Reset Story?", 
+                "Are you sure you want to reset the entire story? This action cannot be undone.",
+                async () => {
+                    chatHistory = [];
+                    genre = '';
+                    storySetup = '';
+                    currentTrackerContent = '';
+                    // Reset to default RPG values
+                    document.getElementById('genreInput').value = 'Classic Fantasy RPG';
+                    document.getElementById('setupInput').value = "You are the last Knight of the Sun, awakened in a forgotten crypt by a cryptic artifact, destined to explore the endlessly branching paths of a ruined world.";
+                    infoTrackerField.value = '';
+                    dialogueSuggestionsDiv.classList.add('hidden');
+                    
+                    await saveStoryState(); 
+                }
+            );
         });
 
     </script>
